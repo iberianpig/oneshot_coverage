@@ -22,7 +22,7 @@ module OneshotCoverage
   OneshotLog = Struct.new(:path, :md5_hash, :lines)
 
   class Reporter
-    def initialize(target_path:, logger:, emit_term: nil, check_bundle_path:)
+    def initialize(target_path:, logger:, check_bundle_path:, emit_path_pattern:, emit_term: nil)
       @target_path = target_path
       @logger = logger
       @emit_term = emit_term
@@ -35,6 +35,7 @@ module OneshotCoverage
         @bundler_path = Bundler.bundle_path.to_s
       end
       @check_bundle_path = check_bundle_path
+      @emit_path_pattern = emit_path_pattern
     end
 
     def emit(force_emit)
@@ -44,14 +45,17 @@ module OneshotCoverage
         end
       end
 
+      emittable = !@emit_path_pattern
+
       logs =
         Coverage.result(clear: true, stop: false).
-        select { |k, v| is_target?(k, v) }.
         map do |filepath, v|
+          next unless is_target?(filepath, v)
+          emittable ||= is_emit_path_pattern?(filepath, v)
           OneshotLog.new(relative_path(filepath), md5_hash_for(filepath), v[:oneshot_lines])
-        end
+        end.compact
 
-      if logs.size > 0
+      if emittable && logs.size > 0
         @logger.post(logs)
       end
     end
@@ -71,9 +75,16 @@ module OneshotCoverage
 
     def is_target?(filepath, value)
       return false if value[:oneshot_lines].empty?
+
       return @check_bundle_path if @bundler_path && filepath.start_with?(@bundler_path)
-      return false if !filepath.start_with?(@target_path)
-      true
+      return true if filepath.start_with?(@target_path)
+
+      false
+    end
+
+    def is_emit_path_pattern?(filepath, value)
+      return false if value[:oneshot_lines].empty?
+      return filepath.match?(@emit_path_pattern) if @emit_path_pattern
     end
 
     def relative_path(filepath)
@@ -112,12 +123,14 @@ module OneshotCoverage
     @reporter&.emit(force_emit)
   end
 
-  def configure(target_path:, logger: OneshotCoverage::Logger::NullLogger.new, emit_term: nil, check_bundle_path: false)
+  def configure(target_path:, logger: OneshotCoverage::Logger::NullLogger.new, emit_term: nil,
+                check_bundle_path: false, emit_path_pattern: nil)
     @reporter = OneshotCoverage::Reporter.new(
       target_path: Pathname.new(target_path).cleanpath.to_s + "/",
       logger: logger,
       emit_term: emit_term,
-      check_bundle_path: check_bundle_path
+      check_bundle_path: check_bundle_path,
+      emit_path_pattern: emit_path_pattern
     )
   end
 end
