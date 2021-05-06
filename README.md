@@ -98,6 +98,20 @@ to emit via `at_exit`.
 On the other hand, it's not, then you need to emit it manually
 at proper timing(i.e. when batch finished)
 
+##### With Sidekiq middleware(optional)
+You can use Sidekiq server middleware to emit logs after each job's `perform` method.
+Add following configuration to `config/initializers/sidekiq.rb`.
+
+```ruby
+require `oneshot_coverage/sidekiq_middleware.rb` 
+
+Sidekiq.configure_server do |config|
+  config.server_middleware do |chain|
+    chain.add OneshotCoverage::SidekiqMiddleware::Server
+  end
+end
+```
+
 ## License
 
 The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
